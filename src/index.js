@@ -15,7 +15,7 @@ app.post('/docx', async (req, res) => {
   try {
     const replacements = req.body;
     const tenantId = req.headers['tenantid'];
-
+    const template = req.headers['template'];
     if (!tenantId || !['CH0001', 'CH0002'].includes(tenantId)) {
       return res.status(400).json({ error: 'Invalid or missing tenantId in headers.' });
     }
@@ -24,10 +24,14 @@ app.post('/docx', async (req, res) => {
       return res.status(400).json({ error: 'Invalid JSON body. Expected a dictionary of replacements.' });
     }
 
-    const templatePath = path.join(__dirname, `../assets/${tenantId}/templates/concentimiento_peluqueria_template.docx`);
+    const templatePath = path.join(__dirname, `../assets/${tenantId}/templates/${template}`);
     const logoPath = path.join(__dirname, `../assets/${tenantId}/logo/logo.png`);
 
-    const resultBuffer = await processTemplateWithImage(templatePath, { ...replacements, logo: logoPath }, logoPath);
+    const resultBuffer = await processTemplateWithImage(
+      templatePath,
+      { ...replacements, logo: logoPath },
+      logoPath
+    );
 
     const tempDir = path.join(__dirname, '../temp');
     if (!fs.existsSync(tempDir)) {
