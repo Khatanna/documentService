@@ -3,7 +3,6 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const { processTemplateWithImage } = require('./services/docx');
 const path = require('path');
-const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -27,26 +26,15 @@ app.post('/docx', async (req, res) => {
     const templatePath = path.join(__dirname, `../assets/${tenantId}/templates/${template}`);
     const logoPath = path.join(__dirname, `../assets/${tenantId}/logo/logo.png`);
 
+    // Generate PDF instead of DOCX
     const resultBuffer = await processTemplateWithImage(
       templatePath,
       { ...replacements, logo: logoPath },
-      logoPath
+      logoPath,
+      { outputFormat: 'pdf' }
     );
 
-    const tempDir = path.join(__dirname, '../temp');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir);
-    }
-
-    const outputPath = path.join(tempDir, 'resultado.docx');
-    fs.writeFileSync(outputPath, resultBuffer);
-
-    res.set({
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'Content-Disposition': 'attachment; filename="resultado.docx"',
-    });
-
-    res.sendFile(outputPath);
+    res.end(resultBuffer, 'binary'); // Send the buffer as binary data
   } catch (error) {
     console.error('Error processing template:', error.message);
     res.status(500).json({ error: 'Failed to process the template. Please try again later.' });
