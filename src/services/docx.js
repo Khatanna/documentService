@@ -10,6 +10,8 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const tempDir = join(__dirname, '../../temp');
+console.log({ tempDir });
 const base64Regex =
   /^(?:data:)?image\/(png|jpg|jpeg|svg|svg\+xml);base64,/;
 
@@ -17,10 +19,7 @@ const validBase64 =
   /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
 function base64Parser(tagValue) {
-  if (
-    typeof tagValue !== "string" ||
-    !base64Regex.test(tagValue)
-  ) {
+  if (typeof tagValue !== "string" || !base64Regex.test(tagValue)) {
     return false;
   }
 
@@ -32,18 +31,7 @@ function base64Parser(tagValue) {
     );
   }
 
-  if (typeof Buffer !== "undefined" && Buffer.from) {
-    return Buffer.from(stringBase64, "base64");
-  }
-
-  const binaryString = window.atob(stringBase64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    const ascii = binaryString.charCodeAt(i);
-    bytes[i] = ascii;
-  }
-  return bytes.buffer;
+  return Buffer.from(stringBase64, "base64");
 }
 
 /**
@@ -52,28 +40,30 @@ function base64Parser(tagValue) {
  * @returns {Promise<Buffer>} - The PDF file buffer.
  */
 async function convertDocxToPdf(docxBuffer) {
-  const tempDir = join(__dirname, '../../temp');
   if (!fs.existsSync(tempDir)) {
-    fs.mkdirSync(tempDir);
+    fs.mkdirSync(tempDir, { recursive: true });
   }
 
-  const inputPath = join(tempDir, 'temp.docx');
-  const outputPath = join(tempDir, 'temp.pdf');
+  const inputPath = join(tempDir, `temp-${Date.now()}.docx`);
+  const outputPath = join(tempDir, `temp-${Date.now()}.pdf`);
 
   fs.writeFileSync(inputPath, docxBuffer);
 
   return new Promise((resolve, reject) => {
     docxConverter(inputPath, outputPath, (err, result) => {
-      if (err) {
-        reject(new Error(`Error converting DOCX to PDF: ${err.message}`));
-      } else {
+      // Limpieza garantizada con try-finally
+      try {
+        if (err) {
+          reject(new Error(`Error converting DOCX to PDF: ${err.message}`));
+          return;
+        }
+
         const pdfBuffer = fs.readFileSync(outputPath);
-
-        // Clean up temporary files
-        fs.unlinkSync(inputPath);
-        fs.unlinkSync(outputPath);
-
         resolve(pdfBuffer);
+      } finally {
+        // Siempre limpiar, incluso si hay error
+        if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+        if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
       }
     });
   });
@@ -87,13 +77,16 @@ async function convertDocxToPdf(docxBuffer) {
  * @returns {Buffer} - Archivo PDF procesado como buffer.
  */
 async function processTemplateWithImage(templatePath, replacements) {
+  if (!fs.existsSync(templatePath)) {
+    throw new Error(`Template file not found: ${templatePath}`);
+  }
+
   try {
     const template = fs.readFileSync(templatePath, 'binary');
     const zip = new PizZip(template);
 
     const imageOptions = {
       getImage: (tagValue, tagName, meta) => {
-        console.log({ tagValue, tagName, meta });
         if (tagName === 'signature') {
           return base64Parser(tagValue);
         }
