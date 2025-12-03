@@ -1,14 +1,8 @@
-import fs from 'fs';
-import PizZip from 'pizzip';
-import Docxtemplater from 'docxtemplater';
-import ImageModule from 'docxtemplater-image-module-free';
-import { imageSize } from 'image-size';
-import docxConverter from 'docx-pdf';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const fs = require('fs');
+const PizZip = require('pizzip');
+const Docxtemplater = require('docxtemplater');
+const ImageModule = require('docxtemplater-image-module-free');
+const sizeOf = require('image-size');
 
 const base64Regex =
   /^(?:data:)?image\/(png|jpg|jpeg|svg|svg\+xml);base64,/;
@@ -47,44 +41,10 @@ function base64Parser(tagValue) {
 }
 
 /**
- * Converts a DOCX buffer to a PDF buffer using docx-pdf.
- * @param {Buffer} docxBuffer - The DOCX file buffer.
- * @returns {Promise<Buffer>} - The PDF file buffer.
- */
-async function convertDocxToPdf(docxBuffer) {
-  const tempDir = join(__dirname, '../../temp');
-  if (!fs.existsSync(tempDir)) {
-    fs.mkdirSync(tempDir);
-  }
-
-  const inputPath = join(tempDir, 'temp.docx');
-  const outputPath = join(tempDir, 'temp.pdf');
-
-  fs.writeFileSync(inputPath, docxBuffer);
-
-  return new Promise((resolve, reject) => {
-    docxConverter(inputPath, outputPath, (err, result) => {
-      if (err) {
-        reject(new Error(`Error converting DOCX to PDF: ${err.message}`));
-      } else {
-        const pdfBuffer = fs.readFileSync(outputPath);
-
-        // Clean up temporary files
-        fs.unlinkSync(inputPath);
-        fs.unlinkSync(outputPath);
-
-        resolve(pdfBuffer);
-      }
-    });
-  });
-}
-
-/**
  * Procesa una plantilla DOCX y realiza los reemplazos, incluyendo imágenes.
- * Genera el documento final en formato PDF.
  * @param {string} templatePath - Ruta al archivo de plantilla DOCX.
  * @param {Object} replacements - Diccionario de reemplazos.
- * @returns {Buffer} - Archivo PDF procesado como buffer.
+ * @returns {Buffer} - Archivo DOCX procesado como buffer.
  */
 async function processTemplateWithImage(templatePath, replacements) {
   try {
@@ -102,7 +62,7 @@ async function processTemplateWithImage(templatePath, replacements) {
       },
       getSize: (img, tagValue, tagName, context) => {
         const buffer = Buffer.isBuffer(img) ? img : Buffer.from(img, 'binary');
-        const dimensions = imageSize(buffer);
+        const dimensions = sizeOf.imageSize(buffer);
 
         if (tagName === 'logo') {
           return [90, 90];
@@ -117,15 +77,13 @@ async function processTemplateWithImage(templatePath, replacements) {
       paragraphLoop: true,
       linebreaks: true,
     });
+    // console.log(replacements);
     doc.render(replacements);
 
-    const docxBuffer = doc.getZip().generate({ type: 'nodebuffer' });
-
-    // Convert the DOCX buffer to a PDF buffer
-    return await convertDocxToPdf(docxBuffer);
+    return doc.getZip().generate({ type: 'nodebuffer' });
   } catch (error) {
     throw new Error(`Error processing template: ${error.message}`);
   }
 }
 
-export { processTemplateWithImage };
+module.exports = { processTemplateWithImage };
