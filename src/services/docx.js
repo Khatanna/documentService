@@ -3,8 +3,8 @@ import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import ImageModule from 'docxtemplater-image-module-free';
 import { imageSize } from 'image-size';
+import docxConverter from 'docx-pdf';
 import { dirname, join } from 'path';
-import libre from 'libreoffice-convert';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -40,12 +40,31 @@ function base64Parser(tagValue) {
  * @returns {Promise<Buffer>} - The PDF file buffer.
  */
 async function convertDocxToPdf(docxBuffer) {
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+
+  const inputPath = join(tempDir, `temp-${Date.now()}.docx`);
+  const outputPath = join(tempDir, `temp-${Date.now()}.pdf`);
+
+  fs.writeFileSync(inputPath, docxBuffer);
+
   return new Promise((resolve, reject) => {
-    libre.convert(docxBuffer, '.pdf', undefined, (err, pdfBuffer) => {
-      if (err) {
-        return reject(new Error(`Error converting DOCX to PDF: ${err.message}`));
+    docxConverter(inputPath, outputPath, (err, result) => {
+      // Limpieza garantizada con try-finally
+      try {
+        if (err) {
+          reject(new Error(`Error converting DOCX to PDF: ${err.message}`));
+          return;
+        }
+
+        const pdfBuffer = fs.readFileSync(outputPath);
+        resolve(pdfBuffer);
+      } finally {
+        // Siempre limpiar, incluso si hay error
+        if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+        if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
       }
-      resolve(pdfBuffer);
     });
   });
 }
@@ -68,15 +87,11 @@ async function processTemplateWithImage(templatePath, replacements) {
 
     const imageOptions = {
       getImage: (tagValue, tagName, meta) => {
-        const buffer = base64Parser(tagValue);
-
-        if (buffer) return buffer;
-
-        if (fs.existsSync(tagValue)) {
-          return fs.readFileSync(tagValue);
+        if (tagName === 'signature') {
+          return base64Parser(tagValue);
         }
 
-        throw new Error(`No se reconoce imagen para tag ${tagName}`);
+        return fs.readFileSync(tagValue, 'binary');
       },
       getSize: (img, tagValue, tagName, context) => {
         const buffer = Buffer.isBuffer(img) ? img : Buffer.from(img, 'binary');
@@ -97,8 +112,9 @@ async function processTemplateWithImage(templatePath, replacements) {
     });
     doc.render(replacements);
 
-    const docxBuffer = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE', });
+    const docxBuffer = doc.getZip().generate({ type: 'nodebuffer' });
 
+    // Convert the DOCX buffer to a PDF buffer
     return await convertDocxToPdf(docxBuffer);
   } catch (error) {
     throw new Error(`Error processing template: ${error.message}`);
