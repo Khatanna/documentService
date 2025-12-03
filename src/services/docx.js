@@ -97,7 +97,7 @@ async function processTemplateWithImage(templatePath, replacements) {
     });
     doc.render(replacements);
 
-    const docxBuffer = doc.getZip().generate({ type: 'nodebuffer' });
+    const docxBuffer = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE', });
 
     return await convertDocxToPdf(docxBuffer);
   } catch (error) {
